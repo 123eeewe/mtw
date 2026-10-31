@@ -131,8 +131,10 @@ pub fn handle_scroll(model: &GuiModel, cfg: &ModConfig, mx: f64, my: f64, raw_up
     let Some(hovered) = model.hovered_slot(mx, my) else {
         return ClickAction::Pass; // не над GUI — пусть игра листает хотбар
     };
-    let idx = hovered.index;
-    let hover_pos = model.slots.iter().position(|s| s.index == idx).unwrap_or(0);
+    // idx — позиция в списке слотов (используется и как slot.index,
+    // т.к. адаптер передаёт слоты в порядке обхода GUI)
+    let idx = model.slots.iter().position(|s| s.index == hovered.index).unwrap_or(hovered.index);
+    let hover_pos = idx;
 
     // Пустой слот под курсором
     if hovered.is_empty() {
@@ -145,7 +147,9 @@ pub fn handle_scroll(model: &GuiModel, cfg: &ModConfig, mx: f64, my: f64, raw_up
                 // «вниз» = вытащить из ближайшего такого же стака обратно в руки.
                 if let Some(key) = &model.cursor_item {
                     if let Some(target) = model.nearest_same_stack(hover_pos, &Some(key.clone())) {
-                        let s = &model.slots[target];
+                        // target — slot.index; переводим в позицию для клика
+                        let tpos = model.slots.iter().position(|s| s.index == target).unwrap_or(target);
+                        let s = &model.slots[tpos];
                         if up {
                             let amt = scroll_amount(cfg, model.cursor_count);
                             let space = s.max_stack.saturating_sub(s.count);
@@ -153,7 +157,7 @@ pub fn handle_scroll(model: &GuiModel, cfg: &ModConfig, mx: f64, my: f64, raw_up
                             if amt == 0 {
                                 return ClickAction::Pass;
                             }
-                            return ClickAction::TakeFromCursor { slot: target, amount: amt };
+                            return ClickAction::TakeFromCursor { slot: tpos, amount: amt };
                         } else {
                             let space_in_hands =
                                 model.cursor_max_stack.saturating_sub(model.cursor_count);
@@ -161,7 +165,7 @@ pub fn handle_scroll(model: &GuiModel, cfg: &ModConfig, mx: f64, my: f64, raw_up
                             if amt == 0 {
                                 return ClickAction::Pass;
                             }
-                            return ClickAction::GiveToCursor { slot: target, amount: amt };
+                            return ClickAction::GiveToCursor { slot: tpos, amount: amt };
                         }
                     }
                 }
@@ -204,13 +208,9 @@ pub fn handle_scroll(model: &GuiModel, cfg: &ModConfig, mx: f64, my: f64, raw_up
             return ClickAction::Pass;
         }
         let space = slot.max_stack.saturating_sub(slot.count);
-        // для режимов 0 (полстака) и -1 (весь стак) считаем от min(руки, свободное место),
-        // для фиксированного N — просто N
-        let reference = model.cursor_count.min(space);
-        let amt = match cfg.items_per_scroll {
-            n if n > 0 => (n as u32).min(reference),
-            _ => scroll_amount(cfg, reference),
-        };
+        // как в MouseTweaks: количество считается от стака-источника (предметы в руках),
+        // затем ограничивается свободным местом в слоте и количеством в руках
+        let amt = scroll_amount(cfg, model.cursor_count).min(space).min(model.cursor_count);
         if amt == 0 {
             ClickAction::Pass
         } else {
@@ -352,9 +352,14 @@ mod tests {
 
     #[test]
     fn scroll_half_stack_zero() {
-        let m = model(Some("diamond".into()), 0, vec![slot(0, Some("diamond".into()), 10)]);
+        // режим 0 = полстака: считаем от стака-источника (10 в слоте -> 5)
+        let m = model(None, 0, vec![slot(0, Some("diamond".into()), 10)]);
         let cfg = ModConfig { items_per_scroll: 0, ..Default::default() };
-        assert_eq!(handle_scroll(&m, &cfg, 10.0, 5.0, false), ClickAction::TakeFromCursor { slot: 0, amount: 5 });
+        assert_eq!(handle_scroll(&m, &cfg, 10.0, 5.0, true), ClickAction::GiveToCursor { slot: 0, amount: 5 });
+
+        // раскладка из рук в полный наполовину стак: руки = источник (8 -> 4)
+        let m2 = model(Some("diamond".into()), 8, vec![slot(0, Some("diamond".into()), 10)]);
+        assert_eq!(handle_scroll(&m2, &cfg, 10.0, 5.0, false), ClickAction::TakeFromCursor { slot: 0, amount: 4 });
     }
 
     #[test]
