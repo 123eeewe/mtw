@@ -1,0 +1,16 @@
+# MouseTweaks-RS (Horizon edition)
+# enable            — главный переключатель
+# items_per_scroll  — предметов за щелчок колеса (0 = полстака, -1 = весь стак)
+# scroll_empty_slot_mode — nearest_same_item_stack | ignore | disable
+# disable_toss_enabled   — отключает «выброс стака» из рук (Ctrl+Q / double-click)
+
+enable = true
+disable_with_ctrl = false
+items_per_scroll = 1
+reverse_scroll_direction = false
+allow_left_dragging = true
+allow_right_dragging = true
+scroll_empty_slot_mode = "nearest_same_item_stack"
+disable_toss_enabled = true
+show_hud_overlay = true
+safe_mode = true
